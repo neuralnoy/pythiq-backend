@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from typing import List
-from ....schemas.knowledge_base import KnowledgeBase, KnowledgeBaseCreate
+from ....schemas.knowledge_base import KnowledgeBase, KnowledgeBaseCreate, KnowledgeBaseUpdate
 from ....db.repositories.knowledge_bases import knowledge_base_repository
 from ....auth.deps import get_current_user
 
@@ -47,4 +47,48 @@ async def delete_knowledge_base(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Knowledge base not found or you don't have permission to delete it"
         )
-    return {"message": "Knowledge base deleted successfully"} 
+    return {"message": "Knowledge base deleted successfully"}
+
+@router.patch("/{knowledge_base_id}", response_model=KnowledgeBase)
+async def update_knowledge_base(
+    knowledge_base_id: str,
+    knowledge_base: KnowledgeBaseUpdate,
+    current_user = Depends(get_current_user)
+):
+    """Update a knowledge base"""
+    # Check if knowledge base exists and belongs to user
+    existing_kb = await knowledge_base_repository.get_by_id_and_user(
+        knowledge_base_id,
+        current_user['email']
+    )
+    if not existing_kb:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Knowledge base not found or you don't have permission to update it"
+        )
+    
+    # Check if new title already exists for user
+    if existing_kb['title'] != knowledge_base.title:
+        title_exists = await knowledge_base_repository.get_by_title_and_user(
+            knowledge_base.title,
+            current_user['email']
+        )
+        if title_exists:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A knowledge base with this title already exists"
+            )
+    
+    updated_kb = await knowledge_base_repository.update(
+        knowledge_base_id,
+        current_user['email'],
+        knowledge_base.dict()
+    )
+    
+    if not updated_kb:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Failed to update knowledge base"
+        )
+    
+    return updated_kb 
