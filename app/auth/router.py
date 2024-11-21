@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Response
 from fastapi.security import OAuth2PasswordRequestForm
 from datetime import timedelta
 from ..core.config import settings
@@ -8,8 +8,8 @@ from ..db.repositories.users import user_repository
 
 router = APIRouter()
 
-@router.post("/register", response_model=Token)
-async def register(user_data: UserCreate):
+@router.post("/register")
+async def register(response: Response, user_data: UserCreate):
     if await user_repository.get_by_email(user_data.email):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -29,14 +29,21 @@ async def register(user_data: UserCreate):
         expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     )
     
+    response.set_cookie(
+        key="access_token",
+        value=f"Bearer {access_token}",
+        httponly=True,
+        secure=True,
+        samesite='lax',
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    )
+    
     return {
-        "access_token": access_token,
-        "token_type": "bearer",
         "user": {"email": user_data.email}
     }
 
-@router.post("/login", response_model=Token)
-async def login(form_data: OAuth2PasswordRequestForm = Depends()):
+@router.post("/login")
+async def login(response: Response, form_data: OAuth2PasswordRequestForm = Depends()):
     user = await user_repository.get_by_email(form_data.username)
     if not user or not verify_password(form_data.password, user['hashed_password']):
         raise HTTPException(
@@ -49,8 +56,20 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
         expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     )
     
+    response.set_cookie(
+        key="access_token",
+        value=f"Bearer {access_token}",
+        httponly=True,
+        secure=True,
+        samesite='lax',
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    )
+    
     return {
-        "access_token": access_token,
-        "token_type": "bearer",
         "user": {"email": user['email']}
     }
+
+@router.post("/logout")
+async def logout(response: Response):
+    response.delete_cookie(key="access_token")
+    return {"message": "Successfully logged out"}

@@ -1,15 +1,22 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from typing import List
-from ....schemas.knowledge_base import KnowledgeBase, KnowledgeBaseCreate, KnowledgeBaseUpdate
-from ....db.repositories.knowledge_bases import knowledge_base_repository
-from ....auth.deps import get_current_user
+from app.schemas.knowledge_base import KnowledgeBase, KnowledgeBaseCreate, KnowledgeBaseUpdate
+from app.db.repositories.knowledge_bases import knowledge_base_repository
+from app.auth.deps import get_current_user
 
 router = APIRouter()
 
 @router.get("/", response_model=List[KnowledgeBase])
 async def get_knowledge_bases(current_user = Depends(get_current_user)):
     """Get all knowledge bases for the current user"""
-    return await knowledge_base_repository.get_all_by_user(current_user['email'])
+    try:
+        knowledge_bases = await knowledge_base_repository.get_by_user(current_user['email'])
+        return knowledge_bases
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
 
 @router.post("/", response_model=KnowledgeBase)
 async def create_knowledge_base(
@@ -17,23 +24,21 @@ async def create_knowledge_base(
     current_user = Depends(get_current_user)
 ):
     """Create a new knowledge base"""
-    # Check if knowledge base with same title exists for user
-    existing_kb = await knowledge_base_repository.get_by_title_and_user(
+    # Check if title already exists for user
+    existing = await knowledge_base_repository.get_by_title_and_user(
         knowledge_base.title,
         current_user['email']
     )
-    if existing_kb:
+    if existing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="A knowledge base with this title already exists"
         )
-
-    knowledge_base_data = {
-        "title": knowledge_base.title,
-        "user_id": current_user['email']
-    }
     
-    return await knowledge_base_repository.create(knowledge_base_data)
+    return await knowledge_base_repository.create({
+        **knowledge_base.dict(),
+        "user_id": current_user['email']
+    })
 
 @router.delete("/{knowledge_base_id}")
 async def delete_knowledge_base(
@@ -56,7 +61,6 @@ async def update_knowledge_base(
     current_user = Depends(get_current_user)
 ):
     """Update a knowledge base"""
-    # Check if knowledge base exists and belongs to user
     existing_kb = await knowledge_base_repository.get_by_id_and_user(
         knowledge_base_id,
         current_user['email']
@@ -67,7 +71,6 @@ async def update_knowledge_base(
             detail="Knowledge base not found or you don't have permission to update it"
         )
     
-    # Check if new title already exists for user
     if existing_kb['title'] != knowledge_base.title:
         title_exists = await knowledge_base_repository.get_by_title_and_user(
             knowledge_base.title,

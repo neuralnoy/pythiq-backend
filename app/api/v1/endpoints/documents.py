@@ -1,9 +1,8 @@
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import List
 from app.schemas.document import Document, DocumentUploadResponse
 from app.db.repositories.documents import document_repository
-from app.auth.deps import get_current_user, security
+from app.auth.deps import get_current_user
 from app.db.repositories.knowledge_bases import knowledge_base_repository
 from fastapi.responses import StreamingResponse
 from app.core.config import settings

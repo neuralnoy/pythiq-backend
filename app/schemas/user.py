@@ -11,6 +11,6 @@ class User(UserBase):
     disabled: bool = False
 
 class Token(BaseModel):
-    access_token: str
-    token_type: str
+    access_token: Optional[str] = None
+    token_type: Optional[str] = None
     user: Optional[dict] = None

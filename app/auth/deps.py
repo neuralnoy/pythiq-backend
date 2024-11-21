@@ -1,14 +1,18 @@
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi import Depends, HTTPException, status, Cookie, Request
 from jose import JWTError, jwt
 from ..core.config import settings
 from ..db.repositories.users import user_repository
 
-security = HTTPBearer()
-
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+async def get_current_user(request: Request):
     try:
-        token = credentials.credentials
+        token = request.cookies.get("access_token")
+        if not token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Not authenticated"
+            )
+            
+        token = token.replace("Bearer ", "")
         payload = jwt.decode(
             token, 
             settings.SECRET_KEY, 
@@ -18,11 +22,11 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         if email is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Could not validate credentials",
+                detail="Could not validate credentials"
             )
         return {"email": email}
     except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials",
+            detail="Could not validate credentials"
         )
