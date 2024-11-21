@@ -1,7 +1,7 @@
-from fastapi import APIRouter, UploadFile, Depends, HTTPException, status
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import List
-from app.schemas.document import Document
+from app.schemas.document import Document, DocumentUploadResponse
 from app.db.repositories.documents import document_repository
 from app.auth.deps import get_current_user, security
 from app.db.repositories.knowledge_bases import knowledge_base_repository
@@ -9,8 +9,16 @@ from fastapi.responses import StreamingResponse
 from app.core.config import settings
 from app.db.client import s3_client
 import io
+from app.utils.file_types import is_valid_file_type
+import logging
+from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+class RenameRequest(BaseModel):
+    name: str
 
 @router.get("/{knowledge_base_id}", response_model=List[Document])
 async def get_documents(
@@ -35,7 +43,7 @@ async def get_documents(
 @router.post("/{knowledge_base_id}/upload", response_model=Document)
 async def upload_document(
     knowledge_base_id: str,
-    file: UploadFile,
+    file: UploadFile = File(...),
     current_user = Depends(get_current_user)
 ):
     try:
@@ -44,9 +52,11 @@ async def upload_document(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="No file provided"
             )
+        
+        # Log file details for debugging
+        logger.info(f"Uploading file: {file.filename}, content_type: {file.content_type}")
             
-        # Optional: Add file size check
-        file_size = 0
+        # Check file size
         file_content = await file.read()
         file_size = len(file_content)
         await file.seek(0)  # Reset file pointer
@@ -68,17 +78,26 @@ async def upload_document(
                 detail="Knowledge base not found or you don't have permission"
             )
 
-        document = await document_repository.upload_document(
-            file,
-            knowledge_base_id,
-            current_user['email']
-        )
-        return document
+        try:
+            document = await document_repository.upload_document(
+                file,
+                knowledge_base_id,
+                current_user['email']
+            )
+            return document
+        except Exception as upload_error:
+            logger.error(f"Upload error: {str(upload_error)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to upload file: {str(upload_error)}"
+            )
+            
     except Exception as e:
+        logger.error(f"Unexpected error during upload: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
-        ) 
+        )
 
 @router.delete("/{knowledge_base_id}/{document_id}")
 async def delete_document(
@@ -98,25 +117,38 @@ async def delete_document(
         )
     return {"message": "Document deleted successfully"}
 
-@router.patch("/{knowledge_base_id}/{document_id}")
+@router.patch("/{knowledge_base_id}/{document_id}/rename", response_model=Document)
 async def rename_document(
     knowledge_base_id: str,
     document_id: str,
-    update_data: dict,
+    rename_request: RenameRequest,
     current_user = Depends(get_current_user)
 ):
-    document = await document_repository.rename_document(
-        document_id,
-        knowledge_base_id,
-        current_user['email'],
-        update_data['name']
-    )
-    if not document:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Document not found or you don't have permission"
+    try:
+        # Check if knowledge base exists and belongs to user
+        kb = await knowledge_base_repository.get_by_id_and_user(
+            knowledge_base_id,
+            current_user['email']
         )
-    return document
+        if not kb:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Knowledge base not found or you don't have permission"
+            )
+
+        # Rename the document
+        document = await document_repository.rename_document(
+            knowledge_base_id,
+            document_id,
+            rename_request.name,
+            current_user['email']
+        )
+        return document
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
 
 @router.get("/{knowledge_base_id}/{document_id}/download")
 async def download_document(

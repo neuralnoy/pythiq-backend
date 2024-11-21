@@ -1,6 +1,11 @@
 from pydantic import BaseModel
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
+from enum import Enum
+
+class ParsingStatus(str, Enum):
+    PENDING = "pending"
+    DONE = "done"
 
 class Document(BaseModel):
     id: str
@@ -12,9 +17,17 @@ class Document(BaseModel):
     path: str
     uploaded_at: datetime
     enabled: bool = True
-    parsing_status: Optional[str] = None
+    parsing_status: ParsingStatus = ParsingStatus.PENDING
 
     class Config:
         json_encoders = {
             datetime: lambda v: v.isoformat()
         } 
+
+class DocumentUploadError(BaseModel):
+    filename: str
+    error: str
+
+class DocumentUploadResponse(BaseModel):
+    documents: List[Document]
+    errors: List[DocumentUploadError] 
