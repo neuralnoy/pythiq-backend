@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Response
+from fastapi import APIRouter, Depends, HTTPException, status, Response, Form
 from fastapi.security import OAuth2PasswordRequestForm
 from datetime import timedelta
 from ..core.config import settings
 from ..core.security import verify_password, get_password_hash, create_access_token
 from ..schemas.user import UserCreate, Token
 from ..db.repositories.users import user_repository
+from .deps import get_current_user
 
 router = APIRouter()
 
@@ -43,7 +44,7 @@ async def register(response: Response, user_data: UserCreate):
     }
 
 @router.post("/login")
-async def login(response: Response, form_data: OAuth2PasswordRequestForm = Depends()):
+async def login(response: Response, form_data: OAuth2PasswordRequestForm = Depends(), remember_me: bool = Form(default=False)):
     user = await user_repository.get_by_email(form_data.username)
     if not user or not verify_password(form_data.password, user['hashed_password']):
         raise HTTPException(
@@ -51,9 +52,11 @@ async def login(response: Response, form_data: OAuth2PasswordRequestForm = Depen
             detail="Incorrect email or password"
         )
     
+    expires_delta = timedelta(days=30) if remember_me else timedelta(hours=24)
+    
     access_token = create_access_token(
         data={"sub": user['email']},
-        expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        expires_delta=expires_delta
     )
     
     response.set_cookie(
@@ -62,7 +65,7 @@ async def login(response: Response, form_data: OAuth2PasswordRequestForm = Depen
         httponly=True,
         secure=True,
         samesite='lax',
-        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        max_age=int(expires_delta.total_seconds())
     )
     
     return {
@@ -73,3 +76,7 @@ async def login(response: Response, form_data: OAuth2PasswordRequestForm = Depen
 async def logout(response: Response):
     response.delete_cookie(key="access_token")
     return {"message": "Successfully logged out"}
+
+@router.get("/me")
+async def get_current_user(current_user = Depends(get_current_user)):
+    return {"user": current_user}
