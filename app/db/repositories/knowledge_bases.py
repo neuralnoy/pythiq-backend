@@ -10,7 +10,7 @@ class KnowledgeBaseRepository:
             'id': str(uuid.uuid4()),
             'title': data['title'],
             'user_id': data['user_id'],
-            'created_at': datetime.utcnow().isoformat()
+            'created_at': datetime.utcnow().isoformat() + 'Z'
         }
         
         knowledge_bases_table.put_item(Item=knowledge_base)
