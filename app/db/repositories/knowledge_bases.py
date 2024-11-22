@@ -1,6 +1,6 @@
 from typing import List, Dict, Optional
 from boto3.dynamodb.conditions import Key
-from ..client import knowledge_bases_table
+from ..client import knowledge_bases_table, documents_table
 from datetime import datetime
 import uuid
 
@@ -18,11 +18,23 @@ class KnowledgeBaseRepository:
 
     async def get_by_user(self, user_id: str) -> List[Dict]:
         try:
+            # Get knowledge bases
             response = knowledge_bases_table.query(
-                IndexName='user_id-index',  # Make sure this index exists
+                IndexName='user_id-index',
                 KeyConditionExpression=Key('user_id').eq(user_id)
             )
-            return response.get('Items', [])
+            knowledge_bases = response.get('Items', [])
+            
+            # Get document counts for each knowledge base
+            for kb in knowledge_bases:
+                response = documents_table.query(
+                    IndexName='knowledge_base_id-index',
+                    KeyConditionExpression=Key('knowledge_base_id').eq(kb['id']),
+                    FilterExpression=Key('user_id').eq(user_id)
+                )
+                kb['document_count'] = len(response.get('Items', []))
+            
+            return knowledge_bases
         except Exception as e:
             print(f"Error querying knowledge bases: {str(e)}")
             return []
