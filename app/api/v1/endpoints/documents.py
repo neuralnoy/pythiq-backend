@@ -60,10 +60,10 @@ async def upload_document(
         file_size = len(file_content)
         await file.seek(0)  # Reset file pointer
         
-        if file_size > 10 * 1024 * 1024:  # 10MB limit
+        if file_size > 100 * 1024 * 1024:  # 100MB limit
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="File size too large. Maximum size is 10MB"
+                detail="File size too large. Maximum size is 100MB"
             )
 
         # Check if knowledge base exists and belongs to user
