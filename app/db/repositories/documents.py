@@ -1,7 +1,7 @@
 from typing import List, Dict, Optional
 from uuid import uuid4
 from datetime import datetime, timezone
-from ..client import s3_client, documents_table
+from ..client import s3_client, documents_table, parsed_documents_table
 from ...core.config import settings
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
@@ -122,18 +122,58 @@ class DocumentRepository:
             if not document or document['user_id'] != user_id:
                 return False
                 
-            # Delete from S3
-            s3_client.delete_object(
-                Bucket=settings.AWS_BUCKET_NAME,
-                Key=document['path']
+            # Get all parsed versions using scan with filter
+            parsed_docs_response = parsed_documents_table.scan(
+                FilterExpression='document_id = :did AND user_id = :uid AND knowledge_base_id = :kid',
+                ExpressionAttributeValues={
+                    ':did': document_id,
+                    ':uid': user_id,
+                    ':kid': knowledge_base_id
+                }
             )
-            
-            # Delete from DynamoDB
+            parsed_docs = parsed_docs_response.get('Items', [])
+
+            # Delete all parsed files from S3 and their metadata from DynamoDB
+            for parsed_doc in parsed_docs:
+                try:
+                    # Delete all parsed format files from S3
+                    for parsed_path in parsed_doc.get('parsed_paths', {}).values():
+                        try:
+                            s3_client.delete_object(
+                                Bucket=settings.AWS_BUCKET_NAME,
+                                Key=parsed_path
+                            )
+                            logger.info(f"Deleted parsed file: {parsed_path}")
+                        except Exception as e:
+                            logger.error(f"Error deleting parsed file {parsed_path}: {str(e)}")
+
+                    # Delete parsed document metadata
+                    parsed_documents_table.delete_item(
+                        Key={'id': parsed_doc['id']}
+                    )
+                    logger.info(f"Deleted parsed document metadata: {parsed_doc['id']}")
+                except Exception as e:
+                    logger.error(f"Error processing parsed document {parsed_doc.get('id')}: {str(e)}")
+
+            # Delete original document from S3
+            try:
+                s3_client.delete_object(
+                    Bucket=settings.AWS_BUCKET_NAME,
+                    Key=document['path']
+                )
+                logger.info(f"Deleted original document from S3: {document['path']}")
+            except Exception as e:
+                logger.error(f"Error deleting original document from S3: {str(e)}")
+
+            # Delete original document metadata from DynamoDB
             documents_table.delete_item(
                 Key={'id': document_id}
             )
+            logger.info(f"Deleted original document metadata: {document_id}")
+            
             return True
-        except Exception:
+        except Exception as e:
+            logger.error(f"Error in delete_document: {str(e)}")
             return False
 
     async def rename_document(

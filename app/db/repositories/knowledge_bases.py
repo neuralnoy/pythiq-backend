@@ -27,12 +27,15 @@ class KnowledgeBaseRepository:
             
             # Get document counts for each knowledge base
             for kb in knowledge_bases:
-                response = documents_table.query(
+                doc_response = documents_table.query(
                     IndexName='knowledge_base_id-index',
                     KeyConditionExpression=Key('knowledge_base_id').eq(kb['id']),
-                    FilterExpression=Key('user_id').eq(user_id)
+                    FilterExpression='user_id = :uid',
+                    ExpressionAttributeValues={
+                        ':uid': user_id
+                    }
                 )
-                kb['document_count'] = len(response.get('Items', []))
+                kb['document_count'] = len(doc_response.get('Items', []))
             
             return knowledge_bases
         except Exception as e:

@@ -8,3 +8,6 @@ pydantic[email]
 python-dotenv
 pydantic-settings
 docling
+Pillow
+pandas
+pyarrow
