@@ -5,7 +5,9 @@ from enum import Enum
 
 class ParsingStatus(str, Enum):
     PENDING = "pending"
+    PROCESSING = "processing"
     DONE = "done"
+    FAILED = "failed"
 
 class Document(BaseModel):
     id: str
@@ -18,6 +20,7 @@ class Document(BaseModel):
     uploaded_at: datetime
     enabled: bool = True
     parsing_status: ParsingStatus = ParsingStatus.PENDING
+    updated_at: Optional[datetime] = None
 
     class Config:
         json_encoders = {

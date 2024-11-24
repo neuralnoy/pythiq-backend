@@ -63,14 +63,27 @@ class DocumentRepository:
                 'path': s3_path,
                 'uploaded_at': datetime.now(timezone.utc).isoformat(),
                 'enabled': True,
-                'parsing_status': 'pending'
+                'parsing_status': 'processing'
             }
             
             documents_table.put_item(Item=document_metadata)
+            
+            # Trigger document parsing
+            try:
+                parsed_doc = await parsed_document_repository.parse_document(document_metadata)
+                if parsed_doc:
+                    # Update document status on successful parse
+                    document_metadata['parsing_status'] = 'done'
+                    documents_table.put_item(Item=document_metadata)
+            except Exception as parse_error:
+                logger.error(f"Parsing error: {str(parse_error)}")
+                document_metadata['parsing_status'] = 'failed'
+                documents_table.put_item(Item=document_metadata)
+            
             return document_metadata
             
         except Exception as e:
-            logger.error(f"Document repository error: {str(e)}")
+            logger.error(f"Document upload error: {str(e)}")
             raise
 
     def _guess_content_type(self, filename: str) -> str:
@@ -247,5 +260,26 @@ class DocumentRepository:
         except Exception as e:
             logger.error(f"Error toggling document: {str(e)}")
             return None
+
+    async def get_document(self, document_id: str, user_id: str) -> Optional[Dict]:
+        """
+        Get a single document by ID and verify user has access to it
+        """
+        try:
+            response = documents_table.get_item(
+                Key={'id': document_id}
+            )
+            
+            document = response.get('Item')
+            
+            # Verify document exists and belongs to user
+            if not document or document['user_id'] != user_id:
+                return None
+                
+            return document
+            
+        except Exception as e:
+            logger.error(f"Error fetching document: {str(e)}")
+            raise Exception(f"Failed to fetch document: {str(e)}")
 
 document_repository = DocumentRepository()
