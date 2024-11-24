@@ -1,8 +1,14 @@
 from typing import List, Dict, Optional
 from boto3.dynamodb.conditions import Key
-from ..client import knowledge_bases_table, documents_table
+from app.db.client import knowledge_bases_table, documents_table, parsed_documents_table, s3_client
 from datetime import datetime
 import uuid
+import boto3
+from app.core.config import settings
+import logging
+
+# Add logger
+logger = logging.getLogger(__name__)
 
 class KnowledgeBaseRepository:
     async def create(self, data: Dict) -> Dict:
@@ -71,15 +77,74 @@ class KnowledgeBaseRepository:
             if not item or item['user_id'] != user_id:
                 return False
             
-            # Then delete it
+            # Get all documents for this knowledge base
+            doc_response = documents_table.query(
+                IndexName='knowledge_base_id-index',
+                KeyConditionExpression=Key('knowledge_base_id').eq(id),
+                FilterExpression='user_id = :uid',
+                ExpressionAttributeValues={
+                    ':uid': user_id
+                }
+            )
+            
+            documents = doc_response.get('Items', [])
+            
+            # Delete all documents and their parsed versions
+            for document in documents:
+                try:
+                    # Get all parsed versions
+                    parsed_docs_response = parsed_documents_table.scan(
+                        FilterExpression='document_id = :did AND user_id = :uid AND knowledge_base_id = :kid',
+                        ExpressionAttributeValues={
+                            ':did': document['id'],
+                            ':uid': user_id,
+                            ':kid': id
+                        }
+                    )
+                    parsed_docs = parsed_docs_response.get('Items', [])
+                    
+                    # Delete all parsed files from S3 and their metadata
+                    for parsed_doc in parsed_docs:
+                        for parsed_path in parsed_doc.get('parsed_paths', {}).values():
+                            try:
+                                s3_client = boto3.client('s3')
+                                s3_client.delete_object(
+                                    Bucket=settings.AWS_BUCKET_NAME,
+                                    Key=parsed_path
+                                )
+                            except Exception as e:
+                                logger.error(f"Error deleting parsed file {parsed_path}: {str(e)}")
+                    
+                    # Delete parsed document metadata
+                    parsed_documents_table.delete_item(
+                        Key={'id': parsed_doc['id']}
+                    )
+                    
+                    # Delete original document from S3
+                    s3_client = boto3.client('s3')
+                    s3_client.delete_object(
+                        Bucket=settings.AWS_BUCKET_NAME,
+                        Key=document['path']
+                    )
+                    
+                    # Delete document metadata
+                    documents_table.delete_item(
+                        Key={'id': document['id']}
+                    )
+                    
+                except Exception as e:
+                    logger.error(f"Error deleting document {document['id']}: {str(e)}")
+            
+            # Finally delete the knowledge base
             knowledge_bases_table.delete_item(
                 Key={'id': id},
                 ConditionExpression='user_id = :user_id',
                 ExpressionAttributeValues={':user_id': user_id}
             )
             return True
+        
         except Exception as e:
-            print(f"Error deleting knowledge base: {str(e)}")
+            logger.error(f"Error in cascading delete of knowledge base: {str(e)}")
             return False
 
     async def update(self, id: str, user_id: str, update_data: Dict) -> Optional[Dict]:
