@@ -2,7 +2,6 @@ from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, status
 from typing import List
 from app.schemas.document import Document, DocumentUploadResponse
 from app.db.repositories.documents import document_repository
-from app.db.repositories.parsed_documents import parsed_document_repository
 from app.auth.deps import get_current_user
 from app.db.repositories.knowledge_bases import knowledge_base_repository
 from fastapi.responses import StreamingResponse
@@ -190,77 +189,6 @@ async def download_document(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Document not found or you don't have permission"
-        )
-
-@router.post("/{knowledge_base_id}/{document_id}/toggle")
-async def toggle_document(
-    knowledge_base_id: str,
-    document_id: str,
-    current_user = Depends(get_current_user)
-):
-    document = await document_repository.toggle_document_enabled(
-        document_id,
-        knowledge_base_id,
-        current_user['email']
-    )
-    if not document:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Document not found or you don't have permission"
-        )
-    return document 
-
-@router.post("/{knowledge_base_id}/{document_id}/parse", response_model=Document)
-async def parse_document(
-    knowledge_base_id: str,
-    document_id: str,
-    current_user = Depends(get_current_user)
-):
-    try:
-        # Get document metadata
-        document = await document_repository.get_document(document_id, current_user['email'])
-        if not document:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Document not found"
-            )
-            
-        # First update status to processing
-        updated_doc = await document_repository.update_parsing_status(
-            knowledge_base_id,
-            document_id,
-            'processing',
-            current_user['email']
-        )
-        
-        # Then trigger parsing
-        parsed_doc = await parsed_document_repository.parse_document(document)
-        
-        # Finally update to done status
-        final_doc = await document_repository.update_parsing_status(
-            knowledge_base_id,
-            document_id,
-            'done',
-            current_user['email']
-        )
-        
-        return final_doc
-    except Exception as e:
-        # Update to failed status on error
-        try:
-            await document_repository.update_parsing_status(
-                knowledge_base_id,
-                document_id,
-                'failed',
-                current_user['email']
-            )
-        except:
-            pass
-            
-        logger.error(f"Error parsing document: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
         )
 
 @router.get("/{knowledge_base_id}/{document_id}", response_model=Document)

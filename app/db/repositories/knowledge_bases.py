@@ -1,6 +1,6 @@
 from typing import List, Dict, Optional
 from boto3.dynamodb.conditions import Key
-from app.db.client import knowledge_bases_table, documents_table, parsed_documents_table, s3_client
+from app.db.client import knowledge_bases_table, documents_table, s3_client
 from datetime import datetime
 import uuid
 import boto3
@@ -89,37 +89,9 @@ class KnowledgeBaseRepository:
             
             documents = doc_response.get('Items', [])
             
-            # Delete all documents and their parsed versions
+            # Delete all documents
             for document in documents:
                 try:
-                    # Get all parsed versions
-                    parsed_docs_response = parsed_documents_table.scan(
-                        FilterExpression='document_id = :did AND user_id = :uid AND knowledge_base_id = :kid',
-                        ExpressionAttributeValues={
-                            ':did': document['id'],
-                            ':uid': user_id,
-                            ':kid': id
-                        }
-                    )
-                    parsed_docs = parsed_docs_response.get('Items', [])
-                    
-                    # Delete all parsed files from S3 and their metadata
-                    for parsed_doc in parsed_docs:
-                        for parsed_path in parsed_doc.get('parsed_paths', {}).values():
-                            try:
-                                s3_client = boto3.client('s3')
-                                s3_client.delete_object(
-                                    Bucket=settings.AWS_BUCKET_NAME,
-                                    Key=parsed_path
-                                )
-                            except Exception as e:
-                                logger.error(f"Error deleting parsed file {parsed_path}: {str(e)}")
-                    
-                    # Delete parsed document metadata
-                    parsed_documents_table.delete_item(
-                        Key={'id': parsed_doc['id']}
-                    )
-                    
                     # Delete original document from S3
                     s3_client = boto3.client('s3')
                     s3_client.delete_object(

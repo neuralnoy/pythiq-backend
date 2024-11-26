@@ -11,3 +11,4 @@ docling
 Pillow
 pandas
 pyarrow
+backoff

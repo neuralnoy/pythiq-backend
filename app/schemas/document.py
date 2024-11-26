@@ -3,12 +3,6 @@ from datetime import datetime
 from typing import Optional, List
 from enum import Enum
 
-class ParsingStatus(str, Enum):
-    PENDING = "pending"
-    PROCESSING = "processing"
-    DONE = "done"
-    FAILED = "failed"
-
 class Document(BaseModel):
     id: str
     name: str
@@ -19,7 +13,6 @@ class Document(BaseModel):
     path: str
     uploaded_at: datetime
     enabled: bool = True
-    parsing_status: ParsingStatus = ParsingStatus.PENDING
     updated_at: Optional[datetime] = None
 
     class Config:
