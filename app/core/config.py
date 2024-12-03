@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     AWS_SECRET_ACCESS_KEY: str
     AWS_REGION: str = "us-east-1"
     AWS_BUCKET_NAME: str
+    OPENAI_API_KEY: str
     
     class Config:
         env_file = ".env"

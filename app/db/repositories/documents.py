@@ -42,14 +42,11 @@ class DocumentRepository:
             
             # Upload file to S3
             s3_path = f"{user_id}/{knowledge_base_id}/{file_id}/{filename}"
-            s3_client.upload_fileobj(
+            await self._upload_to_s3(
                 file.file,
                 settings.AWS_BUCKET_NAME,
                 s3_path,
-                ExtraArgs={
-                    'ContentType': content_type,
-                    'ContentDisposition': f'inline; filename="{filename}"'
-                }
+                content_type
             )
             
             # Store metadata in DynamoDB
@@ -68,18 +65,7 @@ class DocumentRepository:
             
             documents_table.put_item(Item=document_metadata)
             
-            # Trigger document parsing
-            try:
-                parsed_doc = await parsed_document_repository.parse_document(document_metadata)
-                if parsed_doc:
-                    # Update document status on successful parse
-                    document_metadata['parsing_status'] = 'done'
-                    documents_table.put_item(Item=document_metadata)
-            except Exception as parse_error:
-                logger.error(f"Parsing error: {str(parse_error)}")
-                document_metadata['parsing_status'] = 'failed'
-                documents_table.put_item(Item=document_metadata)
-            
+            # Return metadata immediately - parsing will happen in background
             return document_metadata
             
         except Exception as e:
@@ -113,7 +99,7 @@ class DocumentRepository:
 
     async def delete_document(self, document_id: str, knowledge_base_id: str, user_id: str) -> bool:
         try:
-            # Get document metadata
+            # First get the document to verify ownership and get the path
             response = documents_table.get_item(
                 Key={'id': document_id}
             )
@@ -122,25 +108,47 @@ class DocumentRepository:
             if not document or document['user_id'] != user_id:
                 return False
 
-            # Delete original document from S3
-            try:
-                s3_client.delete_object(
+            # Delete all related objects from S3
+            # 1. Main document folder
+            main_prefix = f"{user_id}/{knowledge_base_id}/{document_id}/"
+            # 2. Processed folder
+            processed_prefix = f"{user_id}/{knowledge_base_id}/{document_id}/processed/"
+            
+            # List and delete all objects with these prefixes
+            for prefix in [main_prefix, processed_prefix]:
+                response = s3_client.list_objects_v2(
                     Bucket=settings.AWS_BUCKET_NAME,
-                    Key=document['path']
+                    Prefix=prefix
                 )
-                logger.info(f"Deleted original file: {document['path']}")
-            except Exception as e:
-                logger.error(f"Error deleting original file: {str(e)}")
+                
+                if 'Contents' in response:
+                    for obj in response['Contents']:
+                        s3_client.delete_object(
+                            Bucket=settings.AWS_BUCKET_NAME,
+                            Key=obj['Key']
+                        )
+                        logger.info(f"Deleted S3 object: {obj['Key']}")
 
-            # Delete document metadata
+            # Delete from parsed_documents table using id (not document_id)
+            try:
+                parsed_documents_table.delete_item(
+                    Key={
+                        'id': document_id
+                    }
+                )
+                logger.info(f"Deleted record from parsed_documents table: {document_id}")
+            except Exception as e:
+                logger.error(f"Error deleting from parsed_documents table: {str(e)}")
+
+            # Delete from documents table
             documents_table.delete_item(
                 Key={'id': document_id}
             )
-            logger.info(f"Deleted document metadata: {document_id}")
-
+            
             return True
+            
         except Exception as e:
-            logger.error(f"Error in delete_document: {str(e)}")
+            logger.error(f"Error deleting document: {str(e)}")
             return False
 
     async def rename_document(
@@ -273,20 +281,45 @@ class DocumentRepository:
         Get a single document by ID and verify user has access to it
         """
         try:
+            logger.info(f"""
+            Fetching document with parameters:
+            - Document ID: {document_id}
+            - User ID: {user_id}
+            """)
+            
+            # First, let's see what's in the table
+            scan_response = documents_table.scan(
+                FilterExpression='id = :id',
+                ExpressionAttributeValues={
+                    ':id': document_id
+                }
+            )
+            logger.info(f"Scan results: {scan_response.get('Items', [])}")
+            
+            # Now try the get_item
             response = documents_table.get_item(
                 Key={'id': document_id}
             )
             
             document = response.get('Item')
+            logger.info(f"Get_item result: {document}")
             
-            # Verify document exists and belongs to user
-            if not document or document['user_id'] != user_id:
+            if not document:
+                logger.warning(f"Document not found with ID: {document_id}")
+                return None
+                
+            if document['user_id'] != user_id:
+                logger.warning(f"""
+                User ID mismatch:
+                - Document user_id: {document['user_id']}
+                - Requesting user_id: {user_id}
+                """)
                 return None
                 
             return document
             
         except Exception as e:
-            logger.error(f"Error fetching document: {str(e)}")
+            logger.exception(f"Error fetching document: {str(e)}")
             raise Exception(f"Failed to fetch document: {str(e)}")
 
 document_repository = DocumentRepository()

@@ -1,5 +1,5 @@
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, status
-from typing import List
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, status, BackgroundTasks
+from typing import List, Dict
 from app.schemas.document import Document, DocumentUploadResponse
 from app.db.repositories.documents import document_repository
 from app.auth.deps import get_current_user
@@ -11,6 +11,7 @@ import io
 from app.utils.file_types import is_valid_file_type
 import logging
 from pydantic import BaseModel
+from app.services.parser_service import parser_service
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +43,9 @@ async def get_documents(
 @router.post("/{knowledge_base_id}/upload", response_model=Document)
 async def upload_document(
     knowledge_base_id: str,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    current_user = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     try:
         if not file:
@@ -83,6 +85,27 @@ async def upload_document(
                 knowledge_base_id,
                 current_user['email']
             )
+
+            async def parse_with_error_handling(doc):
+                try:
+                    await parser_service.start_parsing(doc)
+                    await document_repository.update_parsing_status(
+                        knowledge_base_id,
+                        doc['id'],
+                        'done',
+                        current_user['email']
+                    )
+                except Exception as e:
+                    logger.error(f"Parsing failed: {str(e)}")
+                    await document_repository.update_parsing_status(
+                        knowledge_base_id,
+                        doc['id'],
+                        'failed',
+                        current_user['email']
+                    )
+
+            background_tasks.add_task(parse_with_error_handling, document)
+            
             return document
         except Exception as upload_error:
             logger.error(f"Upload error: {str(upload_error)}")
@@ -207,6 +230,113 @@ async def get_document(
         return document
     except Exception as e:
         logger.error(f"Error getting document: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+@router.post("/{knowledge_base_id}/{document_id}/parse", status_code=status.HTTP_202_ACCEPTED)
+async def start_parsing(
+    knowledge_base_id: str,
+    document_id: str,
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(get_current_user)
+) -> Dict:
+    """Start or restart document parsing"""
+    try:
+        # Debug print to see the full current_user object
+        logger.info(f"Current user object: {current_user}")
+        
+        user_id = current_user.get('email')  # Change from user_id to email since that's what we're using
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Could not validate credentials"
+            )
+
+        logger.info(f"""
+        Attempting to parse document:
+        - Knowledge Base ID: {knowledge_base_id}
+        - Document ID: {document_id}
+        - User ID: {user_id}
+        """)
+        
+        # Get document metadata
+        document = await document_repository.get_document(document_id, user_id)
+        
+        if not document:
+            logger.error(f"Document not found: {document_id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Document not found"
+            )
+            
+        if document['knowledge_base_id'] != knowledge_base_id:
+            logger.error(f"Document {document_id} does not belong to knowledge base {knowledge_base_id}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Document does not belong to this knowledge base"
+            )
+        
+        logger.info(f"Document found: {document}")
+        
+        # Add parsing task to background tasks
+        background_tasks.add_task(
+            parser_service.start_parsing,
+            document
+        )
+        
+        # Update status to processing - use email as user_id
+        updated_doc = await document_repository.update_parsing_status(
+            knowledge_base_id,
+            document_id,
+            'processing',
+            user_id
+        )
+        
+        return {
+            "status": "processing",
+            "document": updated_doc
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Error starting parsing: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+@router.get("/{knowledge_base_id}/{document_id}/parse-status")
+async def get_parsing_status(
+    knowledge_base_id: str,
+    document_id: str,
+    current_user: dict = Depends(get_current_user)
+) -> Dict:
+    """Get document parsing status"""
+    try:
+        user_id = current_user.get('email')  # Change from id to email
+        document = await document_repository.get_document(document_id, user_id)
+        
+        if not document:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Document not found"
+            )
+            
+        if document['knowledge_base_id'] != knowledge_base_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Document does not belong to this knowledge base"
+            )
+            
+        return {
+            "status": document.get('parsing_status', 'unknown'),
+            "document_id": document_id
+        }
+        
+    except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)

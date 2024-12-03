@@ -1,6 +1,6 @@
 from typing import List, Dict, Optional
 from boto3.dynamodb.conditions import Key
-from app.db.client import knowledge_bases_table, documents_table, s3_client
+from app.db.client import knowledge_bases_table, documents_table, s3_client, parsed_documents_table
 from datetime import datetime
 import uuid
 import boto3
@@ -89,24 +89,44 @@ class KnowledgeBaseRepository:
             
             documents = doc_response.get('Items', [])
             
-            # Delete all documents
+            # Delete all documents and their parsed versions
             for document in documents:
                 try:
-                    # Delete original document from S3
-                    s3_client = boto3.client('s3')
-                    s3_client.delete_object(
-                        Bucket=settings.AWS_BUCKET_NAME,
-                        Key=document['path']
-                    )
+                    # Delete all S3 objects in the document's folder
+                    main_prefix = f"{user_id}/{id}/{document['id']}/"
+                    processed_prefix = f"{user_id}/{id}/{document['id']}/processed/"
                     
-                    # Delete document metadata
+                    for prefix in [main_prefix, processed_prefix]:
+                        response = s3_client.list_objects_v2(
+                            Bucket=settings.AWS_BUCKET_NAME,
+                            Prefix=prefix
+                        )
+                        
+                        if 'Contents' in response:
+                            for obj in response['Contents']:
+                                s3_client.delete_object(
+                                    Bucket=settings.AWS_BUCKET_NAME,
+                                    Key=obj['Key']
+                                )
+                                logger.info(f"Deleted S3 object: {obj['Key']}")
+                
+                    # Delete from parsed_documents table
+                    try:
+                        parsed_documents_table.delete_item(
+                            Key={'id': document['id']}
+                        )
+                        logger.info(f"Deleted record from parsed_documents table: {document['id']}")
+                    except Exception as e:
+                        logger.error(f"Error deleting from parsed_documents table: {str(e)}")
+                
+                    # Delete from documents table
                     documents_table.delete_item(
                         Key={'id': document['id']}
                     )
                     
                 except Exception as e:
                     logger.error(f"Error deleting document {document['id']}: {str(e)}")
-            
+
             # Finally delete the knowledge base
             knowledge_bases_table.delete_item(
                 Key={'id': id},
