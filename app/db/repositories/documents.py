@@ -203,25 +203,30 @@ class DocumentRepository:
 
     async def generate_download_url(self, document_id: str, knowledge_base_id: str, user_id: str) -> Optional[str]:
         try:
-            response = s3_client.list_objects_v2(
-                Bucket=settings.AWS_BUCKET_NAME,
-                Prefix=f"{user_id}/{knowledge_base_id}/{document_id}/"
+            # Get document metadata to get the original file path
+            response = documents_table.get_item(
+                Key={'id': document_id}
             )
+            document = response.get('Item')
             
-            if 'Contents' not in response:
+            if not document or document['user_id'] != user_id:
                 return None
-                
-            key = response['Contents'][0]['Key']
+
+            # Get the original file path from the document metadata
+            original_path = document['path']
+            
+            # Generate presigned URL for the original file
             url = s3_client.generate_presigned_url(
                 'get_object',
                 Params={
                     'Bucket': settings.AWS_BUCKET_NAME,
-                    'Key': key
+                    'Key': original_path
                 },
                 ExpiresIn=3600  # URL expires in 1 hour
             )
             return url
-        except Exception:
+        except Exception as e:
+            logger.error(f"Error generating download URL: {str(e)}")
             return None
 
     async def update_parsing_status(

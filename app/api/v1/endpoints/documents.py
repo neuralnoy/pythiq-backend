@@ -179,22 +179,28 @@ async def download_document(
     current_user = Depends(get_current_user)
 ):
     try:
-        response = s3_client.list_objects_v2(
-            Bucket=settings.AWS_BUCKET_NAME,
-            Prefix=f"{current_user['email']}/{knowledge_base_id}/{document_id}/"
-        )
+        # Get document metadata to get the original file path
+        document = await document_repository.get_document(document_id, current_user['email'])
         
-        if 'Contents' not in response or not response['Contents']:
+        if not document:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Document not found"
             )
         
-        file_key = response['Contents'][0]['Key']
-        file_obj = s3_client.get_object(
-            Bucket=settings.AWS_BUCKET_NAME,
-            Key=file_key
-        )
+        # Use the original file path from document metadata
+        file_key = document['path']
+        
+        try:
+            file_obj = s3_client.get_object(
+                Bucket=settings.AWS_BUCKET_NAME,
+                Key=file_key
+            )
+        except s3_client.exceptions.NoSuchKey:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="File not found in storage"
+            )
         
         filename = file_key.split('/')[-1]
         content_type = file_obj.get('ContentType', 'application/octet-stream')
@@ -207,11 +213,13 @@ async def download_document(
                 'Content-Type': content_type
             }
         )
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"Download error: {str(e)}")
+        logger.error(f"Download error: {str(e)}")
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Document not found or you don't have permission"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to download document"
         )
 
 @router.get("/{knowledge_base_id}/{document_id}", response_model=Document)
