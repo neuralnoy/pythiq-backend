@@ -10,9 +10,9 @@ class ParserService:
         self.parser_url = "http://localhost:8001/api/v1/process"
         # Increase timeouts significantly for large documents
         self.timeout = httpx.Timeout(
-            timeout=3600.0,  # 1 hour total timeout
+            timeout=1800.0,  # 30 minutes total timeout
             connect=300.0,   # 5 minutes connection timeout
-            read=3600.0,     # 1 hour read timeout
+            read=1800.0,     # 30 minutes read timeout
             write=300.0      # 5 minutes write timeout
         )
 

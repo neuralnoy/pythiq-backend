@@ -349,3 +349,27 @@ async def get_parsing_status(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         ) 
+
+@router.patch("/{knowledge_base_id}/{document_id}/toggle", response_model=Document)
+async def toggle_document(
+    knowledge_base_id: str,
+    document_id: str,
+    current_user = Depends(get_current_user)
+):
+    try:
+        document = await document_repository.toggle_document_enabled(
+            document_id,
+            knowledge_base_id,
+            current_user['email']
+        )
+        if not document:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Document not found or you don't have permission"
+            )
+        return document
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        ) 
