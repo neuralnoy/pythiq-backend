@@ -62,10 +62,10 @@ async def upload_document(
         file_size = len(file_content)
         await file.seek(0)  # Reset file pointer
         
-        if file_size > 100 * 1024 * 1024:  # 100MB limit
+        if file_size > 20 * 1024 * 1024:  # 20MB limit
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="File size too large. Maximum size is 100MB"
+                detail="File size too large. Maximum size is 20MB"
             )
 
         # Check if knowledge base exists and belongs to user
@@ -138,39 +138,6 @@ async def delete_document(
             detail="Document not found or you don't have permission"
         )
     return {"message": "Document deleted successfully"}
-
-@router.patch("/{knowledge_base_id}/{document_id}/rename", response_model=Document)
-async def rename_document(
-    knowledge_base_id: str,
-    document_id: str,
-    rename_request: RenameRequest,
-    current_user = Depends(get_current_user)
-):
-    try:
-        # Check if knowledge base exists and belongs to user
-        kb = await knowledge_base_repository.get_by_id_and_user(
-            knowledge_base_id,
-            current_user['email']
-        )
-        if not kb:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Knowledge base not found or you don't have permission"
-            )
-
-        # Rename the document
-        document = await document_repository.rename_document(
-            knowledge_base_id,
-            document_id,
-            rename_request.name,
-            current_user['email']
-        )
-        return document
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
-        )
 
 @router.get("/{knowledge_base_id}/{document_id}/download")
 async def download_document(

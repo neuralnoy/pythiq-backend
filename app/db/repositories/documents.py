@@ -151,56 +151,6 @@ class DocumentRepository:
             logger.error(f"Error deleting document: {str(e)}")
             return False
 
-    async def rename_document(
-        self, 
-        knowledge_base_id: str, 
-        document_id: str, 
-        new_name: str,
-        user_id: str
-    ) -> Dict:
-        try:
-            # Get current document metadata from DynamoDB
-            response = documents_table.get_item(
-                Key={'id': document_id}
-            )
-            current_doc = response.get('Item')
-            
-            if not current_doc or current_doc['user_id'] != user_id:
-                raise Exception("Document not found")
-
-            # Create the new S3 key
-            old_key = current_doc['path']
-            new_key = f"{user_id}/{knowledge_base_id}/{document_id}/{new_name}"
-
-            # Copy the object in S3 with new name
-            s3_client.copy_object(
-                Bucket=settings.AWS_BUCKET_NAME,
-                CopySource={'Bucket': settings.AWS_BUCKET_NAME, 'Key': old_key},
-                Key=new_key,
-                ContentType=current_doc['type'],
-                MetadataDirective='COPY'
-            )
-
-            # Delete old S3 object
-            s3_client.delete_object(
-                Bucket=settings.AWS_BUCKET_NAME,
-                Key=old_key
-            )
-
-            # Update DynamoDB metadata
-            updated_doc = {
-                **current_doc,
-                'name': new_name,
-                'path': new_key
-            }
-            documents_table.put_item(Item=updated_doc)
-
-            return updated_doc
-
-        except Exception as e:
-            logger.error(f"Error renaming document: {str(e)}")
-            raise Exception(f"Failed to rename document: {str(e)}")
-
     async def generate_download_url(self, document_id: str, knowledge_base_id: str, user_id: str) -> Optional[str]:
         try:
             # Get document metadata to get the original file path
