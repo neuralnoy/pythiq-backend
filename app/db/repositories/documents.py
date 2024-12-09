@@ -76,12 +76,11 @@ class DocumentRepository:
         """Guess the content type based on file extension"""
         extension = filename.lower().split('.')[-1]
         content_types = {
-            'rtf': 'application/rtf',
-            'txt': 'text/plain',
             'pdf': 'application/pdf',
-            'doc': 'application/msword',
             'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            # ... add other types as needed
+            'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+            'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'png': 'image/png'
         }
         return content_types.get(extension, 'application/octet-stream')
 

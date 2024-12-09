@@ -8,16 +8,11 @@ SUPPORTED_MIME_TYPES = {
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     
     # Images
-    'image/png',
-    
-    # Web and text
-    'text/html',
-    'text/markdown',
-    'text/plain'  # For .md files
+    'image/png'
 }
 
 SUPPORTED_EXTENSIONS = {
-    'pdf', 'docx', 'pptx', 'xlsx', 'png', 'html', 'md'
+    'pdf', 'docx', 'pptx', 'xlsx', 'png'
 }
 
 def normalize_content_type(content_type: str, filename: str) -> str:
@@ -26,8 +21,6 @@ def normalize_content_type(content_type: str, filename: str) -> str:
     
     # Map of extensions to content types that might need normalization
     content_type_map = {
-        'md': 'text/markdown',
-        'html': 'text/html',
         'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
         'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
