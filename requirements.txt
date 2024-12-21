@@ -12,3 +12,6 @@ Pillow
 pandas
 pyarrow
 backoff
+langchain
+pymilvus
+openai
