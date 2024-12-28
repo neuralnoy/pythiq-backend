@@ -26,7 +26,7 @@ async def create_chat(
     """Create a new chat"""
     try:
         return await chat_repository.create({
-            **chat.dict(),
+            **chat.model_dump(),
             "user_id": current_user['email']
         })
     except Exception as e:
