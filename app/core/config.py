@@ -1,4 +1,7 @@
 from pydantic_settings import BaseSettings
+from dotenv import load_dotenv
+
+load_dotenv()
 
 class Settings(BaseSettings):
     SECRET_KEY: str
@@ -9,6 +12,8 @@ class Settings(BaseSettings):
     AWS_REGION: str = "us-east-1"
     AWS_BUCKET_NAME: str
     OPENAI_API_KEY: str
+    ZILLIZ_CLOUD_URI: str
+    ZILLIZ_CLOUD_API_KEY: str
     
     class Config:
         env_file = ".env"
