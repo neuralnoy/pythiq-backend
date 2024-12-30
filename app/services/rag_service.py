@@ -94,44 +94,40 @@ class RAGService:
     async def generate_response(
         self,
         query: str,
-        contexts: List[str]
+        contexts: List[str],
+        chat_history: List[Dict] = None
     ) -> str:
         print("\n=== Generating Response ===")
         print(f"Query: {query}")
-        print(f"Number of contexts available: {len(contexts)}")
         
-        # Combine all contexts
-        combined_context = "\n\n---\n\n".join(contexts)
-        print(f"Combined context length: {len(combined_context)}")
+        # Format chat history into a conversation string
+        conversation_context = ""
+        if chat_history:
+            for msg in chat_history:
+                role = "Assistant" if msg["role"] == "assistant" else "Human"
+                conversation_context += f"{role}: {msg['content']}\n"
         
-        # Create messages array for OpenAI
+        # Construct the system message with both document context and chat history
+        system_message = "You are a helpful AI assistant. Answer the question based on the following context and chat history.\n\n"
+        if contexts:
+            system_message += "Context from documents:\n" + "\n".join(contexts) + "\n\n"
+        if conversation_context:
+            system_message += "Previous conversation:\n" + conversation_context
+        
+        client = OpenAI(api_key=self.api_key)
         messages = [
-            {
-                "role": "system",
-                "content": f"""Use the following pieces of context to answer the question at the end.
-                If you don't know the answer, just say that you don't know, don't try to make up an answer.
-                Use three sentences maximum and keep the answer as concise as possible.
-                
-                Context: {combined_context}"""
-            },
-            {
-                "role": "user",
-                "content": query
-            }
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": query}
         ]
         
-        # Generate response using OpenAI
-        print("\nGenerating chat completion...")
         try:
-            client = OpenAI(api_key=self.api_key)
             response = client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=messages,
-                temperature=0
+                temperature=0,
+                max_tokens=4000
             )
-            answer = response.choices[0].message.content
-            print(f"\nGenerated response: {answer}")
-            return answer
+            return response.choices[0].message.content
         except Exception as e:
-            print(f"Error generating chat completion: {str(e)}")
+            print(f"Error generating response: {str(e)}")
             raise 

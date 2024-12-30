@@ -97,6 +97,9 @@ async def create_message(
         if not chat:
             raise HTTPException(status_code=404, detail="Chat not found")
             
+        # Get chat history
+        chat_history = await message_repository.get_chat_messages(chat_id, current_user['email'])
+            
         # Save user message
         user_message = await message_repository.create_message(
             chat_id=chat_id,
@@ -110,24 +113,25 @@ async def create_message(
             knowledge_base_ids=chat['knowledge_base_ids'],
             user_id=current_user['email']
         )
-        enabled_document_ids = [doc['id'] for doc in enabled_documents]
+        document_ids = [doc['id'] for doc in enabled_documents]
         
-        # Get relevant chunks using RAG service
-        contexts = await rag_service.get_relevant_chunks(
+        # Get relevant chunks using RAG
+        relevant_chunks = await rag_service.get_relevant_chunks(
             query=message.content,
             knowledge_base_ids=chat['knowledge_base_ids'],
-            enabled_document_ids=enabled_document_ids,
+            enabled_document_ids=document_ids,
             user_id=current_user['email']
         )
         
-        # Generate AI response
+        # Generate response using chat history
         ai_response = await rag_service.generate_response(
             query=message.content,
-            contexts=contexts
+            contexts=relevant_chunks,
+            chat_history=chat_history
         )
         
-        # Save AI message
-        ai_message = await message_repository.create_message(
+        # Save AI response
+        assistant_message = await message_repository.create_message(
             chat_id=chat_id,
             content=ai_response,
             role="assistant",
@@ -135,12 +139,13 @@ async def create_message(
         )
         
         return {
-            "messages": [user_message, ai_message]
+            "user_message": user_message,
+            "assistant_message": assistant_message
         }
         
     except Exception as e:
         logger.error(f"Error in create_message: {str(e)}")
         raise HTTPException(
-            status_code=500,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         ) 
