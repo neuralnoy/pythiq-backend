@@ -44,4 +44,17 @@ class ChatRepository:
             print(f"Error deleting chat: {str(e)}")
             return False
 
+    async def get_chat(self, chat_id: str, user_id: str) -> Optional[Dict]:
+        try:
+            response = chats_table.get_item(
+                Key={'id': chat_id}
+            )
+            item = response.get('Item')
+            if item and item['user_id'] == user_id:
+                return item
+            return None
+        except Exception as e:
+            print(f"Error getting chat: {str(e)}")
+            return None
+
 chat_repository = ChatRepository() 

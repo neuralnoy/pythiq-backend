@@ -276,4 +276,27 @@ class DocumentRepository:
             logger.exception(f"Error fetching document: {str(e)}")
             raise Exception(f"Failed to fetch document: {str(e)}")
 
+    async def get_enabled_documents_for_knowledge_bases(
+        self,
+        knowledge_base_ids: List[str],
+        user_id: str
+    ) -> List[Dict]:
+        try:
+            enabled_documents = []
+            for kb_id in knowledge_base_ids:
+                response = documents_table.query(
+                    IndexName='knowledge_base_id-index',
+                    KeyConditionExpression=Key('knowledge_base_id').eq(kb_id),
+                    FilterExpression='user_id = :uid AND enabled = :enabled',
+                    ExpressionAttributeValues={
+                        ':uid': user_id,
+                        ':enabled': True
+                    }
+                )
+                enabled_documents.extend(response.get('Items', []))
+            return enabled_documents
+        except Exception as e:
+            print(f"Error getting enabled documents: {str(e)}")
+            return []
+
 document_repository = DocumentRepository()
