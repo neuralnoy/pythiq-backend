@@ -60,6 +60,14 @@ async def delete_chat(
     chat = await chat_repository.get_chat(chat_id, current_user['email'])
     if not chat:
         raise HTTPException(status_code=404, detail="Chat not found")
+    
+    # Delete associated messages first
+    messages_deleted = await message_repository.delete_by_chat_id(chat_id, current_user['email'])
+    if not messages_deleted:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to delete chat messages"
+        )
         
     # Delete the chat
     success = await chat_repository.delete(chat_id, current_user['email'])
@@ -69,7 +77,7 @@ async def delete_chat(
             detail="Failed to delete chat"
         )
     
-    return {"message": "Chat deleted successfully"}
+    return {"message": "Chat and associated messages deleted successfully"}
 
 # Message endpoints
 @router.get("/{chat_id}/messages", response_model=List[Message])

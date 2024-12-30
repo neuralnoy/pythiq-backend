@@ -46,4 +46,22 @@ class MessageRepository:
             print(f"Error querying messages: {str(e)}")
             return []
 
+    async def delete_by_chat_id(self, chat_id: str, user_id: str) -> bool:
+        try:
+            # First get all messages for this chat
+            messages = await self.get_chat_messages(chat_id, user_id)
+            
+            # Delete each message
+            with messages_table.batch_writer() as batch:
+                for message in messages:
+                    batch.delete_item(
+                        Key={
+                            'id': message['id']
+                        }
+                    )
+            return True
+        except Exception as e:
+            print(f"Error deleting messages for chat {chat_id}: {str(e)}")
+            return False
+
 message_repository = MessageRepository() 
