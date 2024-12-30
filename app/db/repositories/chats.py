@@ -57,4 +57,22 @@ class ChatRepository:
             print(f"Error getting chat: {str(e)}")
             return None
 
+    async def update_last_modified(self, chat_id: str, user_id: str) -> bool:
+        try:
+            current_time = datetime.utcnow().isoformat() + 'Z'
+            response = chats_table.update_item(
+                Key={'id': chat_id},
+                UpdateExpression='SET last_modified = :time',
+                ConditionExpression='user_id = :user_id',
+                ExpressionAttributeValues={
+                    ':time': current_time,
+                    ':user_id': user_id
+                },
+                ReturnValues='UPDATED_NEW'
+            )
+            return True
+        except Exception as e:
+            print(f"Error updating chat last_modified: {str(e)}")
+            return False
+
 chat_repository = ChatRepository() 

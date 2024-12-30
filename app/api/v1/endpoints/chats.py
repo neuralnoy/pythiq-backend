@@ -24,7 +24,7 @@ class Chat(ChatBase):
     id: str
     user_id: str
     created_at: str
-    updated_at: Optional[str] = None
+    last_modified: str
 
 class Message(BaseModel):
     id: str
@@ -115,6 +115,9 @@ async def create_message(
             role="user",
             user_id=current_user['email']
         )
+        
+        # Update chat's last_modified timestamp
+        await chat_repository.update_last_modified(chat_id, current_user['email'])
         
         # Get enabled documents for the knowledge bases
         enabled_documents = await document_repository.get_enabled_documents_for_knowledge_bases(

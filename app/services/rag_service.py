@@ -108,7 +108,7 @@ class RAGService:
                 conversation_context += f"{role}: {msg['content']}\n"
         
         # Construct the system message with both document context and chat history
-        system_message = "You are a helpful AI assistant. Answer the question based on the following context and chat history.\n\n"
+        system_message = "You are a helpful AI assistant. Answer the question based on the following context and chat history.\n\n."
         if contexts:
             system_message += "Context from documents:\n" + "\n".join(contexts) + "\n\n"
         if conversation_context:
