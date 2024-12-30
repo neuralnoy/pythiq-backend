@@ -138,10 +138,10 @@ When structuring your response:
 1. Start with a brief overall summary if the question warrants it
 2. Then, present information from each document separately using this format:
 
-📄 [Document Name]
-• Information from this document
-• Continue with bullet points for key information
-• Make sure all points under this section come from this document only
+## 📄 [Document Name]
+- Information from this document
+- Continue with bullet points for key information
+- Make sure all points under this section come from this document only
 
 3. When referring to documents:
    - If a document has a proper name, use that name
@@ -151,6 +151,14 @@ When structuring your response:
 4. Focus on the content and insights rather than document identifiers
 5. Always maintain clear visual separation between information from different documents using the format above
 6. Keep the document naming consistent throughout your response
+7. Format your response using markdown:
+   - Use **bold** for emphasis
+   - Use `code blocks` for technical terms, code snippets, or commands
+   - Use > for quotes or important highlights
+   - Use proper heading levels (##, ###) for section titles
+   - Use proper markdown lists (-, *) for bullet points
+   - Use proper markdown tables when presenting tabular data
+   - Use proper markdown links when referencing URLs
 
 Here is the context to use:\n\n"""
         
