@@ -138,12 +138,14 @@ When structuring your response:
 1. Start with a brief overall summary if the question warrants it
 2. Then, present information from each document separately using this format:
 
-## 📄 [Document Name]
+📄 [Document Name]
+Then continue with the content WITHOUT using any additional document icons:
 - Information from this document
 - Continue with bullet points for key information
 - Make sure all points under this section come from this document only
 
-3. When referring to documents:
+3. When referring to documents in your response text:
+   - Simply use the document name without the 📄 icon
    - If a document has a proper name, use that name
    - For documents without proper names, generate and refer to them as natural phrases based on the document's content
    - NEVER use or mention any document IDs, UUIDs, or technical identifiers
