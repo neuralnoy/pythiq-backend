@@ -34,7 +34,7 @@ class RAGService:
         knowledge_base_ids: List[str],
         enabled_document_ids: List[str],
         user_id: str
-    ) -> List[str]:
+    ) -> List[Dict]:
         print("\n=== Getting Relevant Chunks ===")
         print(f"Query: {query}")
         print(f"Knowledge base IDs: {knowledge_base_ids}")
@@ -56,45 +56,69 @@ class RAGService:
         # Format the lists for Milvus expression
         kb_ids_str = "['" + "','".join(knowledge_base_ids) + "']"
         doc_ids_str = "['" + "','".join(enabled_document_ids) + "']"
-        filter_expr = f"knowledge_base_id in {kb_ids_str} and document_id in {doc_ids_str}"
         print(f"\n=== Milvus Search ===")
-        print(f"Filter expression: {filter_expr}")
-        
-        # Search in Milvus with properly formatted expression
-        print("Starting Milvus search...")
-        try:
-            search_results = self.milvus_client.search(
-                collection_name=collection_name,
-                data=[query_embedding],
-                limit=len(enabled_document_ids),
-                output_fields=["text", "knowledge_base_id", "document_id"],
-                filter=filter_expr
-            )
-            print(f"Milvus search completed. Got {len(search_results) if search_results else 0} results")
-        except Exception as e:
-            print(f"Error searching in Milvus: {str(e)}")
-            raise
         
         # Extract contexts from search results
         print("\n=== Processing Search Results ===")
         contexts = []
-        if search_results and len(search_results) > 0:
-            for hit in search_results[0]:
-                contexts.append(hit['entity']['text'])
-                print("\nFound context:")
-                print(f"Text (first 100 chars): {hit['entity']['text'][:100]}...")
-                print(f"Document ID: {hit['entity']['document_id']}")
-                print(f"Knowledge base ID: {hit['entity']['knowledge_base_id']}")
-        else:
-            print("WARNING: No contexts found in search results")
         
-        print(f"\nTotal contexts found: {len(contexts)}")
+        # Search for each document individually to ensure we get one result from each
+        for doc_id in enabled_document_ids:
+            doc_filter = f"knowledge_base_id in {kb_ids_str} and document_id == '{doc_id}'"
+            print(f"\nSearching for document {doc_id}")
+            print(f"Filter: {doc_filter}")
+            
+            try:
+                doc_results = self.milvus_client.search(
+                    collection_name=collection_name,
+                    data=[query_embedding],
+                    limit=1,  # Get top match for this document
+                    output_fields=["text", "knowledge_base_id", "document_id", "document_name"],
+                    filter=doc_filter,
+                    search_params={"nprobe": 10},
+                    consistency_level="Strong"
+                )
+                
+                if doc_results and len(doc_results) > 0 and len(doc_results[0]) > 0:
+                    hit = doc_results[0][0]  # Get the first (and only) result
+                    entity = hit['entity']
+                    
+                    # Check for required fields, use document_id as fallback for document_name
+                    if 'text' in entity and 'document_id' in entity:
+                        # Use document_name if available, otherwise use a generic name
+                        doc_name = entity.get('document_name', 'Additional Document')
+                        contexts.append({
+                            'text': entity['text'],
+                            'document_name': doc_name
+                        })
+                        print("\nFound context:")
+                        print(f"Text (first 100 chars): {entity['text'][:100]}...")
+                        print(f"Document: {doc_name}")
+                        print(f"Document ID: {entity['document_id']}")
+                        if 'knowledge_base_id' in entity:
+                            print(f"Knowledge base ID: {entity['knowledge_base_id']}")
+                    else:
+                        print(f"Warning: Missing required fields in search result for document {doc_id}")
+                        print(f"Available fields: {list(entity.keys())}")
+                else:
+                    print(f"No matching content found for document {doc_id}")
+                    
+            except Exception as e:
+                print(f"Error searching for document {doc_id}: {str(e)}")
+                print(f"Error type: {type(e)}")
+                continue
+        
+        if not contexts:
+            print("WARNING: No contexts found in any documents")
+        else:
+            print(f"\nTotal contexts found: {len(contexts)} from {len(enabled_document_ids)} enabled documents")
+        
         return contexts
 
     async def generate_response(
         self,
         query: str,
-        contexts: List[str],
+        contexts: List[Dict],
         chat_history: List[Dict] = None
     ) -> str:
         print("\n=== Generating Response ===")
@@ -108,9 +132,33 @@ class RAGService:
                 conversation_context += f"{role}: {msg['content']}\n"
         
         # Construct the system message with both document context and chat history
-        system_message = "You are a helpful AI assistant. Answer the question based on the following context and chat history.\n\n."
+        system_message = """You are a helpful AI assistant. Answer the question based on the following context and chat history.
+
+When structuring your response:
+1. Start with a brief overall summary if the question warrants it
+2. Then, present information from each document separately using this format:
+
+📄 [Document Name]
+• Information from this document
+• Continue with bullet points for key information
+• Make sure all points under this section come from this document only
+
+3. When referring to documents:
+   - If a document has a proper name, use that name
+   - For documents without proper names, generate and refer to them as natural phrases based on the document's content
+   - NEVER use or mention any document IDs, UUIDs, or technical identifiers
+   - If there are multiple unnamed documents, differentiate them naturally (e.g., 'First Market Report', 'Second Market Report')
+4. Focus on the content and insights rather than document identifiers
+5. Always maintain clear visual separation between information from different documents using the format above
+6. Keep the document naming consistent throughout your response
+
+Here is the context to use:\n\n"""
+        
         if contexts:
-            system_message += "Context from documents:\n" + "\n".join(contexts) + "\n\n"
+            system_message += "Context from documents:\n"
+            for context in contexts:
+                system_message += f"\nFrom document '{context['document_name']}':\n{context['text']}\n"
+            system_message += "\n"
         if conversation_context:
             system_message += "Previous conversation:\n" + conversation_context
         
