@@ -9,12 +9,17 @@ from botocore.exceptions import ClientError
 import backoff
 import logging
 from boto3.dynamodb.conditions import Key
+from pymilvus import MilvusClient
 
 logger = logging.getLogger(__name__)
 
 class DocumentRepository:
     def __init__(self):
         self.executor = ThreadPoolExecutor(max_workers=5)  # Limit concurrent uploads
+        self.milvus_client = MilvusClient(
+            uri=settings.ZILLIZ_CLOUD_URI,
+            token=settings.ZILLIZ_CLOUD_API_KEY
+        )
 
     @backoff.on_exception(
         backoff.expo,
@@ -127,6 +132,25 @@ class DocumentRepository:
                             Key=obj['Key']
                         )
                         logger.info(f"Deleted S3 object: {obj['Key']}")
+
+            # Delete from Zilliz/Milvus
+            try:
+                # Sanitize collection name (same as in RAGService)
+                collection_name = user_id.replace('.', '_').replace('@', '_')
+                while '__' in collection_name:
+                    collection_name = collection_name.replace('__', '_')
+                collection_name = collection_name.rstrip('_')
+
+                # Delete all entries for this document
+                delete_expr = f"document_id == '{document_id}'"
+                self.milvus_client.delete(
+                    collection_name=collection_name,
+                    filter=delete_expr
+                )
+                logger.info(f"Deleted entries from Milvus for document: {document_id}")
+            except Exception as e:
+                logger.error(f"Error deleting from Milvus: {str(e)}")
+                # Continue with deletion of other resources even if Milvus deletion fails
 
             # Delete from parsed_documents table using id (not document_id)
             try:

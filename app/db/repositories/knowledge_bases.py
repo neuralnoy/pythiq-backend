@@ -6,11 +6,18 @@ import uuid
 import boto3
 from app.core.config import settings
 import logging
+from pymilvus import MilvusClient
 
 # Add logger
 logger = logging.getLogger(__name__)
 
 class KnowledgeBaseRepository:
+    def __init__(self):
+        self.milvus_client = MilvusClient(
+            uri=settings.ZILLIZ_CLOUD_URI,
+            token=settings.ZILLIZ_CLOUD_API_KEY
+        )
+
     async def create(self, data: Dict) -> Dict:
         knowledge_base = {
             'id': str(uuid.uuid4()),
@@ -109,6 +116,25 @@ class KnowledgeBaseRepository:
                                     Key=obj['Key']
                                 )
                                 logger.info(f"Deleted S3 object: {obj['Key']}")
+
+                    # Delete from Zilliz/Milvus
+                    try:
+                        # Sanitize collection name (same as in RAGService)
+                        collection_name = user_id.replace('.', '_').replace('@', '_')
+                        while '__' in collection_name:
+                            collection_name = collection_name.replace('__', '_')
+                        collection_name = collection_name.rstrip('_')
+
+                        # Delete all entries for this document
+                        delete_expr = f"document_id == '{document['id']}'"
+                        self.milvus_client.delete(
+                            collection_name=collection_name,
+                            filter=delete_expr
+                        )
+                        logger.info(f"Deleted entries from Milvus for document: {document['id']}")
+                    except Exception as e:
+                        logger.error(f"Error deleting from Milvus: {str(e)}")
+                        # Continue with deletion of other resources even if Milvus deletion fails
                 
                     # Delete from parsed_documents table
                     try:
@@ -123,7 +149,7 @@ class KnowledgeBaseRepository:
                     documents_table.delete_item(
                         Key={'id': document['id']}
                     )
-                    
+
                 except Exception as e:
                     logger.error(f"Error deleting document {document['id']}: {str(e)}")
 
