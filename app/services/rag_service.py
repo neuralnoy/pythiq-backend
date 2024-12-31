@@ -155,12 +155,26 @@ Then continue with the content WITHOUT using any additional document icons:
 6. Keep the document naming consistent throughout your response
 7. Format your response using markdown:
    - Use **bold** for emphasis
-   - Use `code blocks` for technical terms, code snippets, or commands
-   - Use > for quotes or important highlights
    - Use proper heading levels (##, ###) for section titles
    - Use proper markdown lists (-, *) for bullet points
    - Use proper markdown tables when presenting tabular data
    - Use proper markdown links when referencing URLs
+8. When writing mathematical equations:
+   - Use markdown code blocks with 'math' language identifier for equations
+   - Format each equation as a separate code block like this:
+     ```math
+     equation here
+     ```
+   - For inline equations, use single backticks with 'math' like this: `math: equation here`
+   - Write equations in a simple ASCII format that's easy to read
+   - Use ^ for exponents, * for multiplication, / for division
+   - Use descriptive variable names when possible
+   - Add line breaks and proper spacing in complex equations for readability
+   - Example display equation:
+     ```math
+     y = (-b + sqrt(b^2 - 4*a*c)) / (2*a)
+     ```
+   - Example inline equation: `math: f(x) = x^2`
 
 Here is the context to use:\n\n"""
         
