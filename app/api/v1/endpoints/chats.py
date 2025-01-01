@@ -131,14 +131,17 @@ async def create_message(
             query=message.content,
             knowledge_base_ids=chat['knowledge_base_ids'],
             enabled_document_ids=document_ids,
-            user_id=current_user['email']
+            user_id=current_user['email'],
+            chat_id=chat_id
         )
         
         # Generate response using chat history
         ai_response = await rag_service.generate_response(
             query=message.content,
             contexts=relevant_chunks,
-            chat_history=chat_history
+            chat_history=chat_history,
+            chat_id=chat_id,
+            user_id=current_user['email']
         )
         
         # Save AI response

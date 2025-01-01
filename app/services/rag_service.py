@@ -4,6 +4,8 @@ from ..core.config import settings
 from openai import OpenAI
 from langchain_openai import OpenAIEmbeddings
 import os
+from ..db.repositories.token_usage import token_usage_repository
+import tiktoken
 
 class RAGService:
     def __init__(self):
@@ -17,23 +19,44 @@ class RAGService:
         )
         print("RAGService initialized successfully")
         
-    async def get_embedding(self, text: str) -> List[float]:
+    def count_tokens(self, text: str) -> int:
+        """Count tokens in a text string using tiktoken"""
+        encoding = tiktoken.encoding_for_model("gpt-4")
+        return len(encoding.encode(text))
+        
+    async def get_embedding(self, text: str, chat_id: str, user_id: str) -> List[float]:
         """Get embeddings using langchain OpenAIEmbeddings"""
         print(f"Getting embeddings for text: {text[:100]}...")
         try:
+            # Count tokens for the text being embedded
+            token_count = self.count_tokens(text)
+            
+            # Get the embedding
             embedding = self.embeddings.embed_query(text)
             print(f"Successfully got embeddings of length: {len(embedding)}")
+            
+            # Record token usage for embedding
+            await token_usage_repository.create_usage_record(
+                user_id=user_id,
+                chat_id=chat_id,
+                completion_tokens=0,
+                prompt_tokens=0,
+                embedding_tokens=token_count,
+                operation_type="embedding"
+            )
+            
             return embedding
         except Exception as e:
             print(f"Error getting embeddings: {str(e)}")
             raise
-        
+
     async def get_relevant_chunks(
         self,
         query: str,
         knowledge_base_ids: List[str],
         enabled_document_ids: List[str],
-        user_id: str
+        user_id: str,
+        chat_id: str
     ) -> List[Dict]:
         print("\n=== Getting Relevant Chunks ===")
         print(f"Query: {query}")
@@ -50,7 +73,7 @@ class RAGService:
         
         # Get embeddings for the query
         print("\n=== Getting Query Embeddings ===")
-        query_embedding = await self.get_embedding(query)
+        query_embedding = await self.get_embedding(query, chat_id, user_id)
         print("Successfully got query embeddings")
         
         # Format the lists for Milvus expression
@@ -119,7 +142,9 @@ class RAGService:
         self,
         query: str,
         contexts: List[Dict],
-        chat_history: List[Dict] = None
+        chat_history: List[Dict] = None,
+        chat_id: str = None,
+        user_id: str = None
     ) -> str:
         print("\n=== Generating Response ===")
         print(f"Query: {query}")
@@ -199,6 +224,17 @@ Here is the context to use:\n\n"""
                 temperature=0,
                 max_tokens=4000
             )
+            
+            # Record token usage for chat completion
+            if chat_id and user_id:
+                await token_usage_repository.create_usage_record(
+                    user_id=user_id,
+                    chat_id=chat_id,
+                    completion_tokens=response.usage.completion_tokens,
+                    prompt_tokens=response.usage.prompt_tokens,
+                    operation_type="chat"
+                )
+            
             return response.choices[0].message.content
         except Exception as e:
             print(f"Error generating response: {str(e)}")
