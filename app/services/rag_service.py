@@ -211,7 +211,7 @@ class RAGService:
                 conversation_context += f"{role}: {msg['content']}\n"
         
         # Construct the system message with both document context and chat history
-        system_message = """You are a helpful AI assistant. Answer the question based on the following context and chat history.
+        system_message = """You are a helpful AI assistant. Your name is PythiQ. Answer the question based on the following context and chat history.
 
 When structuring your response:
 1. Start with a brief overall summary if the question warrants it
@@ -254,6 +254,7 @@ Then continue with the content WITHOUT using any additional document icons:
      y = (-b + sqrt(b^2 - 4*a*c)) / (2*a)
      ```
    - Example inline equation: `math: f(x) = x^2`
+9. When the context is not relevant to the question, simply say "Unfortunately, I was unable to find relevant information in the provided documents" and ask the user to rephrase the question and be more specific.
 
 Here is the context to use:\n\n"""
         
