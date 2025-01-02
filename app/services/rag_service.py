@@ -192,6 +192,41 @@ class RAGService:
         
         return contexts
 
+    def manage_context_window(
+        self,
+        system_message: str,
+        chat_history: List[Dict],
+        query: str,
+        max_tokens: int = 120000  # 128000 - 8000 buffer
+    ) -> List[Dict]:
+        """Manage the context window size by removing old messages if needed."""
+        # First, calculate tokens in the fixed parts
+        total_tokens = self.count_tokens(system_message)
+        total_tokens += self.count_tokens(query)
+        
+        if not chat_history:
+            return []
+            
+        # Calculate tokens for each message and create a list of (message, tokens) tuples
+        message_tokens = []
+        for msg in chat_history:
+            tokens = self.count_tokens(msg["content"])
+            message_tokens.append((msg, tokens))
+            total_tokens += tokens
+        
+        # If we're under the limit, return the full history
+        if total_tokens <= max_tokens:
+            return chat_history
+            
+        # We need to remove old messages. Keep removing from the start until we're under the limit
+        # Always keep at least the last message pair (human + assistant) if possible
+        while total_tokens > max_tokens and len(message_tokens) > 2:
+            removed_msg, removed_tokens = message_tokens.pop(0)
+            total_tokens -= removed_tokens
+        
+        # Return the remaining messages
+        return [msg for msg, _ in message_tokens]
+
     async def generate_response(
         self,
         query: str,
@@ -203,14 +238,7 @@ class RAGService:
         print("\n=== Generating Response ===")
         print(f"Query: {query}")
         
-        # Format chat history into a conversation string
-        conversation_context = ""
-        if chat_history:
-            for msg in chat_history:
-                role = "Assistant" if msg["role"] == "assistant" else "Human"
-                conversation_context += f"{role}: {msg['content']}\n"
-        
-        # Construct the system message with both document context and chat history
+        # Construct the system message first
         system_message = """You are a helpful AI assistant. Your name is PythiQ. Answer the question based on the following context and chat history.
 
 When structuring your response:
@@ -254,7 +282,6 @@ Then continue with the content WITHOUT using any additional document icons:
      y = (-b + sqrt(b^2 - 4*a*c)) / (2*a)
      ```
    - Example inline equation: `math: f(x) = x^2`
-9. When the context is not relevant to the question, simply say "Unfortunately, I was unable to find relevant information in the provided documents" and ask the user to rephrase the question and be more specific.
 
 Here is the context to use:\n\n"""
         
@@ -263,6 +290,17 @@ Here is the context to use:\n\n"""
             for context in contexts:
                 system_message += f"\nFrom document '{context['document_name']}':\n{context['text']}\n"
             system_message += "\n"
+            
+        # Manage context window size
+        managed_history = self.manage_context_window(system_message, chat_history, query) if chat_history else None
+        
+        # Format chat history into a conversation string
+        conversation_context = ""
+        if managed_history:
+            for msg in managed_history:
+                role = "Assistant" if msg["role"] == "assistant" else "Human"
+                conversation_context += f"{role}: {msg['content']}\n"
+                
         if conversation_context:
             system_message += "Previous conversation:\n" + conversation_context
         
