@@ -64,7 +64,7 @@ class DocumentRepository:
                 'user_id': user_id,
                 'path': s3_path,
                 'uploaded_at': datetime.now(timezone.utc).isoformat(),
-                'enabled': False,
+                'enabled': True,
                 'parsing_status': 'processing'
             }
             
