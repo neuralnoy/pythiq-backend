@@ -14,7 +14,7 @@ class TokenUsageRepository:
         embedding_tokens: int = 0,
         operation_type: str = "chat"  # can be "chat" or "embedding"
     ) -> Dict:
-        current_time = datetime.utcnow().isoformat() + 'Z'
+        current_time = datetime.utcnow().isoformat()
         usage_record = {
             'id': str(uuid.uuid4()),
             'user_id': user_id,
