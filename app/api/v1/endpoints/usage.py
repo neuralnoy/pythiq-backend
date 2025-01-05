@@ -39,60 +39,20 @@ async def get_token_usage(
         end_date=end_date.strftime("%Y-%m-%d")
     )
 
-    # Process data based on window
-    window_minutes = {
-        "15m": 15,
-        "1h": 60,
-        "1d": 1440
-    }.get(window)
-    
-    if not window_minutes:
-        raise HTTPException(status_code=400, detail="Invalid window. Use 15m, 1h, or 1d")
-
-    # Initialize data structure
-    aggregated_data = {}
-    
-    for record in usage_data:
-        # Parse timestamp
-        timestamp = datetime.fromisoformat(record['created_at'].replace('Z', '+00:00'))
-        
-        # Round timestamp based on window
-        if window == "1d":
-            key = timestamp.strftime("%Y-%m-%d")
-        else:
-            # Round to nearest window
-            minutes = timestamp.hour * 60 + timestamp.minute
-            rounded_minutes = (minutes // window_minutes) * window_minutes
-            rounded_time = timestamp.replace(
-                hour=rounded_minutes // 60,
-                minute=rounded_minutes % 60,
-                second=0,
-                microsecond=0
-            )
-            key = rounded_time.isoformat()
-
-        if key not in aggregated_data:
-            aggregated_data[key] = {
-                'total_tokens': 0
-            }
-        
-        # Sum all token types
-        total_tokens = (
-            record.get('prompt_tokens', 0) +
-            record.get('completion_tokens', 0) +
-            record.get('embedding_tokens', 0)
-        )
-        
-        aggregated_data[key]['total_tokens'] += total_tokens
-
-    # Convert to list and sort by timestamp
+    # Convert to list format with total_tokens calculated
     result = [
         {
-            'timestamp': k,
-            **v
+            'timestamp': record['created_at'],
+            'total_tokens': (
+                record.get('prompt_tokens', 0) +
+                record.get('completion_tokens', 0) +
+                record.get('embedding_tokens', 0)
+            )
         }
-        for k, v in aggregated_data.items()
+        for record in usage_data
     ]
+    
+    # Sort by timestamp
     result.sort(key=lambda x: x['timestamp'])
 
     return result
