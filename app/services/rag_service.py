@@ -288,7 +288,7 @@ Then continue with the content WITHOUT using any additional document icons:
    - Try to identify which image or figure is being referred to in the text
    - If there are multiple images or figures, try to identify which one is being referred to in the text
    - If the user asks for a specific image or figure, try to identify which one is being referred to in the text
-
+10. Don't reply out of your general knowledge. All the information you need is in the context.
 Here is the context to use:\n\n"""
         
         if contexts:
